@@ -13,7 +13,7 @@ import logging
 import decimal
 from hiveengine.api import Api
 from hiveengine.tokenobject import Token
-from hiveengine.exceptions import (TokenDoesNotExists, TokenNotInWallet, InsufficientTokenAmount, TokenIssueNotPermitted, MaxSupplyReached, InvalidTokenAmount)
+from hiveengine.exceptions import (TokenDoesNotExists,TokenNotStaking,TokenNotDelegation, NoSelfDelegation,TokenNotInWallet, InsufficientTokenAmount, TokenIssueNotPermitted, MaxSupplyReached, InvalidTokenAmount)
 from beem.instance import shared_blockchain_instance
 from beem.account import Account
 
@@ -130,6 +130,8 @@ class Wallet(list):
         if float(token_in_wallet["balance"]) < float(amount):
             raise InsufficientTokenAmount("Only %.3f in wallet" % float(token_in_wallet["balance"]))
         token = Token(symbol, api=self.api)
+        if not token['stakingEnabled']:
+            raise TokenNotStaking("%s not permit to staking." % symbol)
         quant_amount = token.quantize(amount)
         if quant_amount <= decimal.Decimal("0"):
             raise InvalidTokenAmount("Amount to stake is below token precision of %d" % token["precision"])
@@ -233,6 +235,45 @@ class Wallet(list):
         check_to = Account(to, blockchain_instance=self.blockchain)
         contract_payload = {"symbol":symbol.upper(),"to":to,"quantity":str(quant_amount)}
         json_data = {"contractName":"tokens","contractAction":"issue",
+                     "contractPayload":contract_payload}
+        assert self.blockchain.is_hive
+        tx = self.blockchain.custom_json(self.ssc_id, json_data, required_auths=[self.account])
+        return tx
+    def delegate(self, receiver,amount, symbol):
+        """delegate a token.
+
+            :param float amount: Amount to delegate
+            :param str symbol: Token to delegate
+             :param str receiver: Recipient
+
+            Stake example:
+
+            .. code-block:: python
+
+                from hiveengine.wallet import Wallet
+                from beem import Hive
+                active_wif = "5xxxx"
+                stm = Hive(keys=[active_wif])
+                wallet = Wallet("test", blockchain_instance=stm)
+                wallet.delegate(1, "BEE","test1")
+        """
+        token_in_wallet = self.get_token(symbol)
+        if token_in_wallet is None:
+            raise TokenNotInWallet("%s is not in wallet." % symbol)
+        if float(token_in_wallet["stake"]) < float(amount):
+            raise InsufficientTokenAmount("Only %.3f in wallet" % float(token_in_wallet["stake"]))
+        token = Token(symbol, api=self.api)
+        if not token['delegationEnabled']:
+            raise TokenNotDelegation("%s not permit to delegate." % symbol)
+        quant_amount = token.quantize(amount)
+        if quant_amount <= decimal.Decimal("0"):
+            raise InvalidTokenAmount("Amount to delegate is below token precision of %d" % token["precision"])
+        if receiver ==  self.account:
+            raise NoSelfDelegation("Delegation Only to another account")
+        else:
+            _ = Account(receiver, blockchain_instance=self.blockchain)
+        contract_payload = {"to": receiver,"symbol":symbol.upper(), "quantity":str(quant_amount)}
+        json_data = {"contractName":"tokens","contractAction":"delegate",
                      "contractPayload":contract_payload}
         assert self.blockchain.is_hive
         tx = self.blockchain.custom_json(self.ssc_id, json_data, required_auths=[self.account])

@@ -45,3 +45,15 @@ class MaxSupplyReached(Exception):
     """ Only the token issuer is allowed to permit new tokens
     """
     pass
+class NoSelfDelegation(Exception):
+    """ Delegation Only to another account
+    """
+    pass
+class TokenNotDelegation(Exception):
+    """ Delegation is not enabled
+    """
+    pass
+class TokenNotStaking(Exception):
+    """ Staking is not enabled
+    """
+    pass
